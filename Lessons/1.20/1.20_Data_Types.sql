@@ -54,13 +54,3 @@ SELECT
 FROM job_postings_fact
 WHERE salary_year_avg IS NOT NULL
 LIMIT 10;
-
-/*
-Problem 1: Complex Composite Key & Safe Division
-Scenario: You need to create an audit key and calculate an adjusted daily salary rate.
-Requirements:
-Create a composite key named audit_id formatted as JOB-<job_id>_COMP-<company_id>_YEAR-<year> (Extract the 4-digit year from job_posted_date).
-Calculate daily_rate by taking salary_year_avg and dividing it by 260 working days. The result must be rounded to an exact 2-decimal financial figure (DECIMAL(10,2)).
-Convert job_work_from_home into a readable text label: 'Remote' if TRUE, 'On-Site' if FALSE.
-Use EXTRACT(YEAR FROM job_posted_date) or CAST(job_posted_date AS DATE), combined with string concatenation (||) and a CASE statement.
-*/
