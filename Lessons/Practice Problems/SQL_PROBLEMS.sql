@@ -351,3 +351,111 @@ ORDER BY median_salary DESC;
 │ Data Scientist            │        125320 │         12625 │
 └───────────────────────────┴───────────────┴───────────────┘
 */
+/*
+Problem 3: Custom Sorting in ORDER BY
+Write a query that pulls job_id, job_title_short, and job_location from job_postings_fact.
+Order the results by a custom priority using a CASE statement so that:
+'Data Engineer' postings appear first.
+'Senior Data Engineer' postings appear second.
+All other job titles appear last.
+*/
+SELECT
+    job_id,
+    job_title_short,
+    job_location
+FROM job_postings_fact
+ORDER BY
+    CASE
+        WHEN job_title_short = 'Data Engineer' THEN 1
+        WHEN job_title_short = 'Senior Data Engineer' THEN 2
+        ELSE 3
+    END;
+/*
+Write an aggregation query that groups by job_schedule_type (e.g., Full-time, Part-time, Contract) and returns:
+job_schedule_type
+Total count of all jobs (total_jobs)
+Count of jobs where job_title_short = 'Data Engineer' (de_jobs_count)
+Count of jobs where job_title_short = 'Data Analyst' (da_jobs_count)
+Average salary specifically for Data Engineers (avg_de_salary)
+*/
+SELECT
+    job_schedule_type,
+    COUNT(*) AS total_jobs,
+    COUNT(CASE WHEN job_title_short = 'Data Engineer' THEN 1 END) AS data_engineer_count,
+    COUNT(CASE WHEN job_title_short = 'Data Analyst' THEN 1 END) AS data_analyst_count,
+    COUNT(CASE WHEN job_title_short NOT IN ('Data Engineer','Data Analyst') THEN 1 END) AS other_jobs_count,
+    AVG(CASE WHEN job_title_short = 'Data Engineer' THEN salary_year_avg END)::INT AS avg_de_salary,
+    AVG(CASE WHEN job_title_short = 'Data Analyst' THEN salary_year_avg END)::INT AS avg_da_salary
+FROM 
+    job_postings_fact
+WHERE 
+    salary_year_avg IS NOT NULL
+GROUP BY 
+    job_schedule_type
+HAVING COUNT (*) > 20;
+/*
+┌──────────────────────────┬────────────┬─────────────────────┬────────────────────┬──────────────────┬───────────────┬───────────────┐
+│    job_schedule_type     │ total_jobs │ data_engineer_count │ data_analyst_count │ other_jobs_count │ avg_de_salary │ avg_da_salary │
+│         varchar          │   int64    │        int64        │       int64        │      int64       │     int32     │     int32     │
+├──────────────────────────┼────────────┼─────────────────────┼────────────────────┼──────────────────┼───────────────┼───────────────┤
+│ Full-time                │      47426 │                9874 │              12518 │            25034 │        134755 │         94081 │
+│ NULL                     │        173 │                  36 │                 57 │               80 │        123658 │         93025 │
+│ Full-time and Temp work  │        105 │                  19 │                 24 │               62 │        137290 │         82924 │
+│ Part-time                │        234 │                  22 │                111 │              101 │        130236 │         67075 │
+│ Full-time and Contractor │        299 │                  54 │                134 │              111 │        113197 │         86333 │
+│ Full-time and Internship │         49 │                   4 │                 16 │               29 │         94010 │         66188 │
+│ Temp work                │        142 │                   9 │                 39 │               94 │        109767 │         82372 │
+│ Internship               │        120 │                  27 │                 32 │               61 │         89515 │         67169 │
+│ Full-time and Part-time  │       1530 │                 321 │                315 │              894 │        160281 │         90350 │
+│ Contractor               │        815 │                 175 │                302 │              338 │        114212 │         82548 │
+│ Contractor and Temp work │         32 │                   1 │                 19 │               12 │        150000 │         79046 │
+└──────────────────────────┴────────────┴─────────────────────┴────────────────────┴──────────────────┴───────────────┴───────────────┘
+*/
+/*
+Problem 5: Advanced Salary Bucketing & Market Analysis
+Write a single aggregation query on data_jobs.job_postings_fact that analyzes 
+job market distribution by salary tier across different remote work setups (job_work_from_home).
+Your query must compute and return the following columns:remote_status:'Remote' if job_work_from_home is TRUE
+ (or 1)'On-Site / Hybrid' otherwise.
+ total_job_postings: Total count of job postings in that remote status category.high_salary_jobs: Count of jobs where 
+ salary_year_avg >= 130000.mid_salary_jobs: Count of jobs where salary_year_avg is between $80,000 and $129,999.low_salary_jobs: Count of jobs where 
+ salary_year_avg < 80000.unspecified_salary_jobs: Count of jobs where salary_year_avg is NULL.high_pay_pct: The percentage of jobs with specified salaries that
+  fall into the 'high_salary_jobs' bucket (rounded to 1 decimal place, e.g., 28.5).
+  Requirements & Constraints
+  Do not filter out NULL salaries in the WHERE clause—handle
+   them explicitly inside your conditional logic so the total count matches all rows.Group the results by remote_status.
+   Order the output so 'Remote' appears first.
+*/
+WITH salary_cte AS(
+SELECT 
+    CASE WHEN job_work_from_home IS TRUE THEN 'Remote' ELSE 'On-site / Hybrid' END AS job_status,
+    COALESCE (salary_year_avg, salary_hour_avg * 2080) AS normalized_salary_avg
+FROM job_postings_fact),
+
+salary_counts AS(
+SELECT
+    job_status,
+    COUNT(*) AS total_job_postings,
+    COUNT(CASE WHEN normalized_salary_avg IS NULL THEN 1 END) AS unspecified_salary_jobs,
+    COUNT(normalized_salary_avg) AS specified_salary_jobs,
+    COUNT(CASE WHEN normalized_salary_avg < 80_000 THEN 1 END) AS low_salary_jobs,
+    COUNT(CASE WHEN normalized_salary_avg BETWEEN 80_000 AND 129_999 THEN 1 END) AS mid_salary_jobs,
+    COUNT(CASE WHEN normalized_salary_avg >= 130_000 THEN 1 END) AS high_salary_jobs
+FROM salary_cte
+GROUP BY job_status)
+
+SELECT
+    *,
+    ROUND(100.0 * high_salary_jobs / NULLIF(specified_salary_jobs,0),2) AS high_pay_pct
+FROM salary_counts
+ORDER BY
+    CASE WHEN job_status = 'Remote' THEN 1 ELSE 2 END;
+/*
+┌──────────────────┬────────────────────┬─────────────────────────┬───────────────────────┬─────────────────┬─────────────────┬──────────────────┬──────────────┐
+│    job_status    │ total_job_postings │ unspecified_salary_jobs │ specified_salary_jobs │ low_salary_jobs │ mid_salary_jobs │ high_salary_jobs │ high_pay_pct │
+│     varchar      │       int64        │          int64          │         int64         │      int64      │      int64      │      int64       │    double    │
+├──────────────────┼────────────────────┼─────────────────────────┼───────────────────────┼─────────────────┼─────────────────┼──────────────────┼──────────────┤
+│ Remote           │             144532 │                  132117 │                 12415 │            3100 │            4221 │             5094 │        41.03 │
+│ On-site / Hybrid │            1471398 │                 1406728 │                 64670 │           15556 │           27824 │            21289 │        32.92 │
+└──────────────────┴────────────────────┴─────────────────────────┴───────────────────────┴─────────────────┴─────────────────┴──────────────────┴──────────────┘
+*/
